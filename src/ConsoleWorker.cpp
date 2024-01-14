@@ -11,7 +11,6 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
-#include "replxx.hxx"
 #include "util.h"
 
 #include "ConsoleWorker.h"
@@ -260,7 +259,9 @@ Replxx::ACTION_RESULT message( Replxx& replxx, std::string s, char32_t ) {
 
 ConsoleWorker::ConsoleWorker(QObject *parent)
     : QObject{parent}
-{}
+{
+    connect(&reader, &ConsoleReader::textReceived, this, &ConsoleWorker::textReceivedCallback);
+}
 
 
 void ConsoleWorker::mysleep(const quint32 secs){
@@ -276,6 +277,82 @@ void ConsoleWorker::mysleep(const quint32 secs){
         }
     }
 }
+
+void ConsoleWorker::textReceivedCallback(const QString message){
+    if(message.isEmpty()) return;
+
+    // change cinput into a std::string
+    // easier to manipulate
+    const QStringList args = QString(message).split(" ", Qt::SkipEmptyParts);
+    const QString command = args.isEmpty() ? QString() : args.first();
+
+    if (message.isEmpty()) {
+        // user hit enter on an empty line
+
+        return;
+
+    } else if (command== "q"){
+        // exit the repl
+        needExit= true;
+        rx.history_add(message.toStdString());
+        return;
+
+    } else if (command== ".help") {
+        // display the help output
+        std::cout
+            << ".help\n\tdisplays the help output\n"
+            << ".quit\n\texit the repl\n"
+            << ".exit\n\texit the repl\n"
+            << ".clear\n\tclears the screen\n"
+            << ".history\n\tdisplays the history output\n"
+            << ".prompt <str>\n\tset the repl prompt to <str>\n";
+
+        rx.history_add(message.toStdString());
+        return;
+
+    }else if(message.toStdString().compare(0, 7, "SET")== 0 || message.toStdString().compare(0, 10, "SSET")== 0){
+        int amo=args.size();
+        qDebug() << "emit tmk_SET(n, s);";
+    } else if (message.toStdString().compare(0, 8, ".history") == 0) {
+        // display the current history
+        Replxx::HistoryScan hs( rx.history_scan() );
+        for ( int i( 0 ); hs.next(); ++ i ) {
+            std::cout << std::setw(4) << i << ": " << hs.get().text() << "\n";
+        }
+
+        rx.history_add(message.toStdString());
+        return;
+
+    } else if (message.toStdString().compare(0, 6, ".merge") == 0) {
+        history_file_path = "replxx_history_alt.txt";
+
+        rx.history_add(message.toStdString());
+        return;
+
+    } else if (message.toStdString().compare(0, 5, ".save") == 0) {
+        history_file_path = "replxx_history_alt.txt";
+        std::ofstream history_file( history_file_path.c_str() );
+        rx.history_save( history_file );
+        return;
+
+    } else if (message.toStdString().compare(0, 6, ".clear") == 0) {
+        // clear the screen
+        rx.clear_screen();
+
+        rx.history_add(message.toStdString());
+        return;
+
+    } else {
+        // default action
+        // echo the input
+
+        rx.print( "Unknown cmd\n");
+
+        rx.history_add( message.toStdString() );
+        return;
+    }
+}
+
 
 void ConsoleWorker::run(){
     // words to be completed
@@ -400,7 +477,6 @@ void ConsoleWorker::run(){
     bool bracketedPaste( false );
     bool ignoreCase( false );
     std::string keys;
-    std::string prompt;
     int hintDelay( 0 );
 //    while ( argc_ > 1 ) {
 //        -- argc_;
@@ -420,12 +496,12 @@ void ConsoleWorker::run(){
 //    }
 
     // init the repl
-    Replxx rx;
+    //replxx::Replxx rx;
     Tick tick( rx, keys, tickMessages, promptFan );
     rx.install_window_change_handler();
 
     // the path to the history file
-    std::string history_file_path {"./replxx_history.txt"};
+    //std::string history_file_path {"./replxx_history.txt"};
 
     // load the history file if it exists
     /* scope for ifstream object for auto-close */ {
@@ -575,104 +651,11 @@ void ConsoleWorker::run(){
         bool noCheck= false;
         bool cmd_correct= true;
 
-        if(QThread::currentThread()->isInterruptionRequested()){
+        QCoreApplication::processEvents();
+        if(QThread::currentThread()->isInterruptionRequested() || needExit){
             goto exit_LABEL;
         }
-
-        // display the prompt and retrieve input from the user
-        char const* cinput{ nullptr };
-
-        do {
-            cinput = rx.input(prompt);
-        } while ( ( cinput == nullptr ) && ( errno == EAGAIN ) );
-
-        if (cinput == nullptr) {
-            break;
-        }
-
-        // change cinput into a std::string
-        // easier to manipulate
-        std::string input {cinput};
-        const QStringList args = QString(cinput).split(" ", Qt::SkipEmptyParts);
-        const QString command = args.isEmpty() ? QString() : args.first();
-
-        if (input.empty()) {
-            // user hit enter on an empty line
-
-            continue;
-
-        } else if (input== "q" || input.compare(0, 5, ".exit") == 0) {
-            // exit the repl
-
-            rx.history_add(input);
-            break;
-
-        } else if (input.compare(0, 5, ".help") == 0) {
-            // display the help output
-            std::cout
-                << ".help\n\tdisplays the help output\n"
-                << ".quit\n\texit the repl\n"
-                << ".exit\n\texit the repl\n"
-                << ".clear\n\tclears the screen\n"
-                << ".history\n\tdisplays the history output\n"
-                << ".prompt <str>\n\tset the repl prompt to <str>\n";
-
-            rx.history_add(input);
-            continue;
-
-        } else if (input.compare(0, 7, "TESTALL") == 0) {
-            // set the repl prompt text
-            auto pos = input.find(" ");
-            if (pos == std::string::npos) {
-                std::cout << "Error: '.prompt' missing argument\n";
-            } else {
-                prompt = input.substr(pos + 1) + " ";
-            }
-
-            rx.history_add(input);
-            continue;
-
-        }else if(input.compare(0, 7, "SET")== 0 || input.compare(0, 10, "SSET")== 0){
-            int amo=args.size();
-            qDebug() << "emit tmk_SET(n, s);";
-        } else if (input.compare(0, 8, ".history") == 0) {
-            // display the current history
-            Replxx::HistoryScan hs( rx.history_scan() );
-            for ( int i( 0 ); hs.next(); ++ i ) {
-                std::cout << std::setw(4) << i << ": " << hs.get().text() << "\n";
-            }
-
-            rx.history_add(input);
-            continue;
-
-        } else if (input.compare(0, 6, ".merge") == 0) {
-            history_file_path = "replxx_history_alt.txt";
-
-            rx.history_add(input);
-            continue;
-
-        } else if (input.compare(0, 5, ".save") == 0) {
-            history_file_path = "replxx_history_alt.txt";
-            std::ofstream history_file( history_file_path.c_str() );
-            rx.history_save( history_file );
-            continue;
-
-        } else if (input.compare(0, 6, ".clear") == 0) {
-            // clear the screen
-            rx.clear_screen();
-
-            rx.history_add(input);
-            continue;
-
-        } else {
-            // default action
-            // echo the input
-
-            rx.print( "%s\n", input.c_str() );
-
-            rx.history_add( input );
-            continue;
-        }
+        QThread::sleep(1); //1 s pause
     }
     goto exit_LABEL;
 exit_LABEL:;

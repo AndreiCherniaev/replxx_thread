@@ -27,10 +27,10 @@ qt_add_executable(${PROJECT_NAME}
   util.c util.h
   include/replxx.hxx
 
+  ConsoleReader.h ConsoleReader.cpp
   MainClass.cpp MainClass.h
-  main.cpp
+  main.cpp main.h
   ConsoleWorker.h ConsoleWorker.cpp
-  main.h
 )
 
 target_include_directories( ${PROJECT_NAME} PUBLIC
