@@ -260,7 +260,7 @@ Replxx::ACTION_RESULT message( Replxx& replxx, std::string s, char32_t ) {
 ConsoleWorker::ConsoleWorker(QObject *parent)
     : QObject{parent}
 {
-    connect(&reader, &ConsoleReader::textReceived, this, &ConsoleWorker::textReceivedCallback);
+    connect(&reader, &ConsoleReader::textDetected, this, &ConsoleWorker::textReceivedCallback);
 }
 
 
@@ -278,24 +278,32 @@ void ConsoleWorker::mysleep(const quint32 secs){
     }
 }
 
-void ConsoleWorker::textReceivedCallback(const QString message){
-    if(message.isEmpty()) return;
+
+void ConsoleWorker::textReceivedCallback(){
+    // display the prompt and retrieve input from the user
+    char const* cinput{ nullptr };
+
+    //do {
+        cinput = rx.input(prompt);
+   // } while ( ( cinput == nullptr ) && ( errno == EAGAIN ) );
+
+    if (cinput == nullptr) {
+        return;
+    }
 
     // change cinput into a std::string
     // easier to manipulate
-    const QStringList args = QString(message).split(" ", Qt::SkipEmptyParts);
+    std::string input {cinput};
+    const QStringList args = QString(cinput).split(" ", Qt::SkipEmptyParts);
     const QString command = args.isEmpty() ? QString() : args.first();
 
-    if (message.isEmpty()) {
+    if(args.isEmpty()){
         // user hit enter on an empty line
-
         return;
-
-    } else if (command== "q"){
+    } else if (command== "q" || input.compare(0, 5, ".quit")== 0){
         // exit the repl
         needExit= true;
-        rx.history_add(message.toStdString());
-        return;
+        rx.history_add(input);
 
     } else if (command== ".help") {
         // display the help output
@@ -307,39 +315,39 @@ void ConsoleWorker::textReceivedCallback(const QString message){
             << ".history\n\tdisplays the history output\n"
             << ".prompt <str>\n\tset the repl prompt to <str>\n";
 
-        rx.history_add(message.toStdString());
+        rx.history_add(input);
         return;
 
-    }else if(message.toStdString().compare(0, 7, "SET")== 0 || message.toStdString().compare(0, 10, "SSET")== 0){
+    }else if(input.compare(0, 7, "SET")== 0 || input.compare(0, 10, "SSET")== 0){
         int amo=args.size();
         qDebug() << "emit tmk_SET(n, s);";
-    } else if (message.toStdString().compare(0, 8, ".history") == 0) {
+    } else if (input.compare(0, 8, ".history") == 0) {
         // display the current history
         Replxx::HistoryScan hs( rx.history_scan() );
         for ( int i( 0 ); hs.next(); ++ i ) {
             std::cout << std::setw(4) << i << ": " << hs.get().text() << "\n";
         }
 
-        rx.history_add(message.toStdString());
+        rx.history_add(input);
         return;
 
-    } else if (message.toStdString().compare(0, 6, ".merge") == 0) {
+    } else if (input.compare(0, 6, ".merge") == 0) {
         history_file_path = "replxx_history_alt.txt";
 
-        rx.history_add(message.toStdString());
+        rx.history_add(input);
         return;
 
-    } else if (message.toStdString().compare(0, 5, ".save") == 0) {
+    } else if (input.compare(0, 5, ".save") == 0) {
         history_file_path = "replxx_history_alt.txt";
         std::ofstream history_file( history_file_path.c_str() );
         rx.history_save( history_file );
         return;
 
-    } else if (message.toStdString().compare(0, 6, ".clear") == 0) {
+    } else if (input.compare(0, 6, ".clear") == 0) {
         // clear the screen
         rx.clear_screen();
 
-        rx.history_add(message.toStdString());
+        rx.history_add(input);
         return;
 
     } else {
@@ -348,7 +356,7 @@ void ConsoleWorker::textReceivedCallback(const QString message){
 
         rx.print( "Unknown cmd\n");
 
-        rx.history_add( message.toStdString() );
+        rx.history_add( input );
         return;
     }
 }

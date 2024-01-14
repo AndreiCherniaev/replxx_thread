@@ -22,7 +22,7 @@ public:
     explicit ConsoleWorker(QObject *parent = nullptr);
 
 public slots:
-    void textReceivedCallback(const QString message);
+    void textReceivedCallback();
     void run(); //метод с пользовательскими алгоритмами, которые могут быть оформлены в этом методе внутри while(1)
 
 signals:
