@@ -278,6 +278,7 @@ void ConsoleWorker::mysleep(const quint32 secs){
     }
 }
 
+
 void ConsoleWorker::textReceivedCallback(const QString message){
     if(message.isEmpty()) return;
 
